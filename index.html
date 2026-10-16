@@ -582,16 +582,16 @@ function CxSyncPanel(){
    h("button",{className:"btn btn-primary",style:{flex:1},onClick:()=>window.CxSync.syncNow()},"زامن دلوقتي"),
    h("button",{className:"btn",style:{flex:1},onClick:()=>{if(window.confirm("تخرج من حساب المزامنة على الموبايل ده؟"))window.CxSync.logout()}},"خروج")));
  return h("div",{className:"card",style:{marginBottom:22}},
-  h("p",{className:"font-bold mb-1"},"☁️ مزامنة بين الموبايلات"),
+  h("p",{className:"font-bold mb-1"},"☁️ مزامنة بين الموبايلات (بيانات + صور)"),
   body,
   ms&&h("p",{className:"text-sm mt-2 font-semibold",style:{color:"#B3362E"}},ms));
 }
 
 var _dbp=null;
 function idb(){return _dbp||(_dbp=new Promise((res,rej)=>{const r=indexedDB.open("clinic-files",1);r.onupgradeneeded=()=>{r.result.createObjectStore("files",{keyPath:"id"})};r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)}))}
-async function fPut(rec){const db=await idb();return new Promise((res,rej)=>{const t=db.transaction("files","readwrite");t.objectStore("files").put(rec);t.oncomplete=()=>{res();try{CxFolder.touchFiles()}catch(x){}};t.onerror=()=>rej(t.error);t.onabort=()=>rej(t.error)})}
+async function fPut(rec){const db=await idb();return new Promise((res,rej)=>{const t=db.transaction("files","readwrite");t.objectStore("files").put(rec);t.oncomplete=()=>{res();try{CxFolder.touchFiles()}catch(x){}try{window.CxSync&&window.CxSync.filePut(rec)}catch(x){}};t.onerror=()=>rej(t.error);t.onabort=()=>rej(t.error)})}
 async function fAll(pid){const db=await idb();return new Promise((res,rej)=>{const q=db.transaction("files","readonly").objectStore("files").getAll();q.onsuccess=()=>res(q.result.filter(x=>x.patientId===pid));q.onerror=()=>rej(q.error)})}
-async function fDel(id){const db=await idb();return new Promise((res,rej)=>{const t=db.transaction("files","readwrite");t.objectStore("files").delete(id);t.oncomplete=()=>{res();try{CxFolder.touchFiles()}catch(x){}};t.onerror=()=>rej(t.error)})}
+async function fDel(id){const db=await idb();return new Promise((res,rej)=>{const t=db.transaction("files","readwrite");t.objectStore("files").delete(id);t.oncomplete=()=>{res();try{CxFolder.touchFiles()}catch(x){}try{window.CxSync&&window.CxSync.fileDel(id)}catch(x){}};t.onerror=()=>rej(t.error)})}
 async function fDelPatient(pid){const a=await fAll(pid);for(const x of a)await fDel(x.id)}
 function shrink(file){return new Promise(res=>{if(!file.type.startsWith("image/"))return res(file);const img=new Image(),u=URL.createObjectURL(file);img.onload=()=>{try{const k=Math.min(1,1600/Math.max(img.width,img.height)),c=document.createElement("canvas");c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);c.getContext("2d").drawImage(img,0,0,c.width,c.height);c.toBlob(b=>{URL.revokeObjectURL(u);res(b||file)},"image/jpeg",.82)}catch{URL.revokeObjectURL(u);res(file)}};img.onerror=()=>{URL.revokeObjectURL(u);res(file)};img.src=u})}
 function mm({onSave:e,initial:z,edit:ed}){
@@ -648,6 +648,7 @@ function PFiles({pid}){
  const cat=f=>f.cat||"أخرى";
  const load=()=>fAll(pid).then(a=>{a.sort((x,y)=>(y.date||"").localeCompare(x.date||""));setFs(a);setLd(false)}).catch(()=>{setEr("تخزين الصور والملفات مش متاح في المتصفح ده.");setLd(false)});
  E.useEffect(()=>{setLd(true);setVw(null);setFt("الكل");setPd(null);load()},[pid]);
+ E.useEffect(()=>{const f=()=>load();window.addEventListener("cx-files",f);return()=>window.removeEventListener("cx-files",f)},[pid]);
  const urls=E.useMemo(()=>{const m={};fs.forEach(f=>{m[f.id]=URL.createObjectURL(f.blob)});return m},[fs]);
  E.useEffect(()=>()=>{Object.values(urls).forEach(u=>URL.revokeObjectURL(u))},[urls]);
  const pick=ev=>{let list=[...ev.target.files];ev.target.value="";if(!list.length)return;setEr("");const ok=f=>/^image\//.test(f.type||"")||f.type==="application/pdf"||/\.(jpe?g|png|gif|webp|heic|heif|bmp|pdf)$/i.test(f.name||"");const good=list.filter(ok);if(good.length<list.length)setEr("اتجاهلت ملفات مش صور ولا PDF.");if(!good.length)return;setPd(good)};
