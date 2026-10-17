@@ -57,6 +57,10 @@ function emsg(e){var c=(e&&e.code)||"";
 /* fmeta/{id}: بيانات خفيفة بتتزامن لحظيًا — fblob/{id}: الصورة نفسها بتتنزّل مرة واحدة لكل موبايل */
 var FK="clinic:syncfiles",fb={};try{fb=JSON.parse(localStorage.getItem(FK)||"{}")}catch(e){}
 function saveFb(){try{localStorage.setItem(FK,JSON.stringify(fb))}catch(e){}}
+/* حذف الصور من السحابة بيتم بس للصور اللي المستخدم حذفها بإيده (مش لأي صورة اختفت من المتصفح) */
+var DK="clinic:syncdel";
+function loadPd(){try{return JSON.parse(localStorage.getItem(DK)||"{}")||{}}catch(e){return{}}}
+function savePd(o){try{localStorage.setItem(DK,JSON.stringify(o))}catch(e){}}
 function fmeta(r){return{patientId:r.patientId||"",name:r.name||"",date:r.date||"",cat:r.cat||""}}
 function fmh(m){return hash(JSON.stringify([m.patientId||"",m.name||"",m.date||"",m.cat||""]))}
 var dbp=null;
@@ -92,7 +96,13 @@ async function upFile(rec){
  fb[rec.id]=fmh(m);saveFb()}
 async function procMeta(id,x){
  var local=await iGet(id);
- if(x.del){if(local){await iDel(id);fdisp()}fb[id]="x";saveFb();return}
+ if(x.del){
+  if(local){
+   var cd=fb[id],trk=cd!==undefined&&cd!=="x"&&!/^s:/.test(cd);
+   if(trk){await iDel(id);fdisp();fb[id]="x";saveFb()}
+   else{delete fb[id];saveFb();scheduleScan(true)} /* الصورة موجودة هنا (اترجعت من نسخة احتياطية): نرفعها تاني بدل ما نمسحها */
+   return}
+  fb[id]="x";saveFb();return}
  if(!x.hasBlob)return;
  var mh=fmh(x);
  if(local){
@@ -118,11 +128,15 @@ async function scan(){
   var keys=await iKeys(),have={},ids=Object.keys(fb),tracked=ids.filter(function(k){return fb[k]!=="x"&&!/^s:/.test(fb[k])});
   keys.forEach(function(k){have[k]=1});
   if(!keys.length&&tracked.length>3){fb={};saveFb();scanBusy=false;stopFiles();startFiles();return}
+  var pd=loadPd(),lost=false;
+  Object.keys(pd).forEach(function(k){if(have[k]||fb[k]===undefined||fb[k]==="x")delete pd[k]});savePd(pd);
   for(var i=0;i<ids.length;i++){var id=ids[i],v=fb[id];if(have[id]||v==="x")continue;
    if(/^s:/.test(v)){delete fb[id];continue}
+   if(!pd[id]){delete fb[id];lost=true;continue} /* اختفت من المتصفح من غير حذف مقصود: نرجّعها من السحابة */
    await fs.setDoc(fs.doc(db,"fmeta",id),{del:true,hasBlob:false,ts:Date.now()},{merge:true});
    try{await fs.deleteDoc(fs.doc(db,"fblob",id))}catch(e){}
-   fb[id]="x";saveFb()}
+   delete pd[id];savePd(pd);fb[id]="x";saveFb()}
+  if(lost){saveFb();scanBusy=false;stopFiles();startFiles();return}
   for(var j=0;j<keys.length;j++){var k=keys[j];if(fb[k]!==undefined||upIn[k])continue;
    var rec=await iGet(k);if(!rec||!rec.blob)continue;
    upIn[k]=1;fnote();
@@ -189,9 +203,11 @@ window.CxSync={
  sub:function(f){subs.push(f);return function(){subs=subs.filter(function(x){return x!==f})}},
  push:push,flush:flush,
  filePut:function(rec){try{if(!fready||!rec||!rec.id)return;var m=fmeta(rec),cur=fb[rec.id];
+  if(cur==="x"){delete fb[rec.id];saveFb();cur=undefined}
+  var pd0=loadPd();if(pd0[rec.id]){delete pd0[rec.id];savePd(pd0)}
   if(cur!==undefined&&cur!=="x"&&!/^s:/.test(cur)){var h=fmh(m);if(h!==cur){fb[rec.id]=h;saveFb();fs.setDoc(fs.doc(db,"fmeta",rec.id),{patientId:m.patientId,name:m.name,date:m.date,cat:m.cat,ts:Date.now()},{merge:true}).catch(function(e){set("err",emsg(e))})}return}
   scheduleScan()}catch(e){}},
- fileDel:function(){try{scheduleScan()}catch(e){}},
+ fileDel:function(id){try{if(id){var p=loadPd();p[id]=1;savePd(p)}scheduleScan()}catch(e){}},
  syncNow:function(){flush()},
  login:async function(email,pw){
   if(!AU)throw new Error("المزامنة لسه بتحمّل");
