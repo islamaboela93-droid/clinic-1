@@ -97,11 +97,7 @@ async function upFile(rec){
 async function procMeta(id,x){
  var local=await iGet(id);
  if(x.del){
-  if(local){
-   var cd=fb[id],trk=cd!==undefined&&cd!=="x"&&!/^s:/.test(cd);
-   if(trk){await iDel(id);fdisp();fb[id]="x";saveFb()}
-   else{delete fb[id];saveFb();scheduleScan(true)} /* الصورة موجودة هنا (اترجعت من نسخة احتياطية): نرفعها تاني بدل ما نمسحها */
-   return}
+  /* مفيش حذف تلقائي للصور على الموبايل ده بسبب علامة جاية من السحابة: الصورة الموجودة هنا بتفضل، والحذف بيتم بس بإيدك */
   fb[id]="x";saveFb();return}
  if(!x.hasBlob)return;
  var mh=fmh(x);
